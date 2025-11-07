@@ -1,0 +1,11 @@
+pandas
+mysql-connector-python
+python-dotenv
+presidio-analyzer
+transformers
+torch
+tqdm
+Pillow
+requests
+openpyxl
+hvac
