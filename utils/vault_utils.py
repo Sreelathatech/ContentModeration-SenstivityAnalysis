@@ -3,16 +3,16 @@ import os
 import hvac
 from dotenv import load_dotenv
 
-def load_env(env_file=".env.dev"):
+''''def load_env(env_file="dev.py"):
     """Load environment variables from a given .env file."""
     if os.path.exists(env_file):
         load_dotenv(env_file)
         print(f"✅ Loaded environment from {env_file}")
     else:
-        raise FileNotFoundError(f"{env_file} not found. Please create it with Vault credentials.")
+        raise FileNotFoundError(f"{env_file} not found. Please create it with Vault credentials.")'''
 
 
-def get_vault_client():
+def get_vault_client(): 
     """Authenticate with Vault using AppRole."""
     vault_addr = os.getenv("VAULT_ADDR")
     role_id = os.getenv("VAULT_ROLE_ID")

@@ -11,7 +11,7 @@ from modules.nsfw_detection import run_for_all as run_nsfw
 from modules.report_generation import generate_reporting_columns
 from modules.report_grouping import generate_final_report
 from modules.report_db_writer import upsert_final_report
-from utils.vault_utils import load_env
+from utils.vault_utils import get_vault_client
 
 
 def main(env_file: str = ".env.dev"):
@@ -22,8 +22,8 @@ def main(env_file: str = ".env.dev"):
     print("🚀 Starting Content Moderation Pipeline")
 
     # 1️⃣ Load environment variables
-    load_env(env_file)
-    print(f"✅ Environment loaded from {env_file}")
+    '''load_env(env_file)
+    print(f"✅ Environment loaded from {env_file}")'''
 
     # 2️⃣ Fetch data 
     print("📥 Fetching service and provider data...")
@@ -85,7 +85,7 @@ def main(env_file: str = ".env.dev"):
     final_report=final_report.loc[final_report['admin_check'] == "review_required"]
     final_report.to_excel(combined_path, index=False, engine="openpyxl")
 
-    upsert_final_report(final_report)
+#    upsert_final_report(final_report)
 
     print("🎉 Pipeline completed successfully.")
     return final_report

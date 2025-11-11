@@ -4,7 +4,7 @@ import os
 from config.db_config import get_db_connection
 from config.settings import SYNC_FILE
 import mysql.connector
-from utils.vault_utils import load_env, get_vault_client, get_db_config
+from utils.vault_utils import get_vault_client, get_db_config
 
 def get_last_sync():
     """Reads last sync timestamp or defaults to year 2000."""
@@ -19,7 +19,7 @@ def get_last_sync():
 
 def fetch_records():
     # Step 1: Load .env.dev
-    load_env(".env.dev")
+    ''''load_env(".env.dev")'''
 
     # Step 2: Get Vault client
     client = get_vault_client()
@@ -35,13 +35,13 @@ def fetch_records():
     service_query = f"""
         SELECT service_id, provider_id, title, description, other_image_urls, tags, image_url, updated_on, created_on
         FROM dev_she_careers.services
-        WHERE updated_on > '{get_last_sync}' OR created_on > '{get_last_sync}' limit 20;"""
+        WHERE updated_on > '{get_last_sync}' OR created_on > '{get_last_sync}' limit 500 ;"""
 
     provider_query = f"""
         SELECT provider_id, name, bio_image, profile_picture_url, about,
                provider_store_images, about_image, created_on, updated_on
         FROM dev_she_careers.provider
-        WHERE updated_on > '{get_last_sync}' OR created_on > '{get_last_sync}' limit 20;
+        WHERE updated_on > '{get_last_sync}' OR created_on > '{get_last_sync}' limit 500;
     """
 
     service_queryProd = f"""
