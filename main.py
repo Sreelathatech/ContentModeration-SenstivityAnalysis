@@ -85,7 +85,7 @@ def main(env_file: str = ".env.dev"):
     final_report=final_report.loc[final_report['admin_check'] == "review_required"]
     final_report.to_excel(combined_path, index=False, engine="openpyxl")
 
-#    upsert_final_report(final_report)
+    upsert_final_report(final_report)
 
     print("🎉 Pipeline completed successfully.")
     return final_report
