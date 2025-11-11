@@ -35,12 +35,12 @@ def fetch_records():
     service_queryProd = f"""
         SELECT *
         FROM prod_she_careers.services
-        WHERE updated_on > '{get_last_sync}' OR created_on > '{get_last_sync}' limit 200;"""
+        WHERE updated_on > '{get_last_sync}' OR created_on > '{get_last_sync}';"""
 
     provider_queryProd = f"""
         SELECT *
         FROM prod_she_careers.provider
-        WHERE updated_on > '{get_last_sync}' OR created_on > '{get_last_sync}' limit 200;
+        WHERE updated_on > '{get_last_sync}' OR created_on > '{get_last_sync}';
     """
 
     serviceDf = pd.read_sql_query(service_queryProd, conn)   #change query based on dev and prod
