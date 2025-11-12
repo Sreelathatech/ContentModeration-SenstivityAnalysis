@@ -35,13 +35,13 @@ def fetch_records():
     service_query = f"""
         SELECT service_id, provider_id, title, description, other_image_urls, tags, image_url, updated_on, created_on
         FROM dev_she_careers.services
-        WHERE updated_on > '{get_last_sync}' OR created_on > '{get_last_sync}' limit 500 ;"""
+        WHERE updated_on > '{get_last_sync()}' OR created_on > '{get_last_sync()}' limit 500 ;"""
 
     provider_query = f"""
         SELECT provider_id, name, bio_image, profile_picture_url, about,
                provider_store_images, about_image, created_on, updated_on
         FROM dev_she_careers.provider
-        WHERE updated_on > '{get_last_sync}' OR created_on > '{get_last_sync}' limit 500;
+        WHERE updated_on > '{get_last_sync()}' OR created_on > '{get_last_sync()}' limit 500;
     """
 
     service_queryProd = f"""
