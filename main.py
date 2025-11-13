@@ -4,7 +4,7 @@
 import os
 import pandas as pd
 
-from modules.data_extraction import fetch_records
+from modules.data_extraction import fetch_records,update_last_sync
 from modules.pii_detection import run_for_all as run_pii
 from modules.toxicity_detection import run_for_all as run_toxicity
 from modules.nsfw_detection import run_for_all as run_nsfw
@@ -86,6 +86,7 @@ def main(env_file: str = ".env.dev"):
     final_report.to_excel(combined_path, index=False, engine="openpyxl")
 
     upsert_final_report(final_report)
+    update_last_sync()
 
     print("🎉 Pipeline completed successfully.")
     return final_report
