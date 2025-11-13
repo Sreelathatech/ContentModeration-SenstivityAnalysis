@@ -4,7 +4,7 @@
 import os
 import pandas as pd
 
-from modules.data_extraction import fetch_records
+from modules.data_extraction import fetch_records,update_last_sync
 from modules.pii_detection import run_for_all as run_pii
 from modules.toxicity_detection import run_for_all as run_toxicity
 from modules.nsfw_detection import run_for_all as run_nsfw
@@ -85,14 +85,16 @@ def main(env_file: str = ".env.prod"):
     final_report=final_report.loc[final_report['admin_check'] == "Review required"]
     final_report.to_excel(combined_path, index=False, engine="openpyxl")
 
-    upsert_final_report(final_report)
+    print("🕒 Updating last sync timestamp...")
+    update_last_sync()
+    print("✅ Sync time updated successfully.")
 
-    '''print("🗄️ Writing entity-level report to MySQL...")
+    print("🗄️ Writing entity-level report to MySQL...")
     upsert_final_report(final_report)
     print("✅ MySQL report table successfully updated.")
 
     print("🎉 Pipeline completed successfully.")
-    return final_report'''
+    return final_report
 
 
 if __name__ == "__main__":
