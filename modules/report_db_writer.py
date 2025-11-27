@@ -2,14 +2,17 @@ import mysql.connector
 import json
 from utils.vault_utils import get_vault_client, get_db_config
 
+
 def upsert_final_report(final_report, table_name="content_moderation_report"):
     """
-    Inserts or updates entity-level moderation report in MySQL.
-    Uses entity_id as the unique key (covers both service and provider).
+    Insert or update entity-level moderation results into MySQL.
+    Returns the number of rows successfully upserted.
     """
 
-    # --- Load connection config from Vault ---
-    '''load_env(".env.dev")'''
+    if final_report is None or final_report.empty:
+        return 0
+
+    # --- Load DB config from Vault ---
     client = get_vault_client()
     db_config = get_db_config(client)
 
@@ -57,10 +60,14 @@ def upsert_final_report(final_report, table_name="content_moderation_report"):
             str(row.get("admin_comment", "")) if "admin_comment" in row else "",
         ))
 
-    # --- Execute batch upsert ---
+    # --- Execute batch UPSERT ---
     cursor.executemany(insert_sql, rows)
     conn.commit()
-    print(f"✅ Upserted {cursor.rowcount} entity reports into {table_name}.")
+
+    # Number of rows impacted (useful for API JSON response)
+    affected_rows = cursor.rowcount
 
     cursor.close()
     conn.close()
+
+    return affected_rows

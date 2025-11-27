@@ -1,4 +1,4 @@
-# ====================== PII DETECTION MODULE ======================
+# ====================== FIXED PII DETECTION MODULE ======================
 from presidio_analyzer import AnalyzerEngine, Pattern, PatternRecognizer
 from tqdm import tqdm
 import re
@@ -9,26 +9,27 @@ analyzer = AnalyzerEngine()
 # --- REMOVE noisy built-in recognizers ---
 from presidio_analyzer import RecognizerRegistry
 
-for recognizer_name in ["URLRecognizer", "US_BANK_NUMBER", "US_DRIVER_LICENSE"]:
+# Remove noisy or irrelevant recognizers
+REMOVE_RECOGNIZERS = [
+    "URLRecognizer", "URL", "US_BANK_NUMBER", "US_DRIVER_LICENSE",
+    "NRP", "LOCATION", "PERSON", "DATE_TIME"
+]
+
+for recognizer_name in REMOVE_RECOGNIZERS:
     try:
-        # Find matching recognizer by class name or entity type
         recognizer_to_remove = None
         for r in analyzer.registry.recognizers:
-            if r.name == recognizer_name or (
-                r.supported_entities and recognizer_name in r.supported_entities
-            ):
+            if r.name == recognizer_name or \
+               (r.supported_entities and recognizer_name in r.supported_entities):
                 recognizer_to_remove = r
                 break
 
         if recognizer_to_remove:
             analyzer.registry.remove_recognizer(recognizer_to_remove)
-            print(f"✅ Removed built-in recognizer: {recognizer_name}")
-        else:
-            print(f"⚠️ Recognizer not found: {recognizer_name}")
-    except Exception as e:
-        print(f"⚠️ Could not remove recognizer {recognizer_name}: {e}")
+    except:
+        pass
 
-# --- ADD a stricter custom URL recognizer ---
+# --- ADD custom URL recognizer (optional but controlled) ---
 custom_url_pattern = Pattern(
     name="custom_url_pattern",
     regex=r"\b(?:https?://|www\.)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:/[^\s]*)?\b",
@@ -42,43 +43,53 @@ custom_url_recognizer = PatternRecognizer(
 )
 
 analyzer.registry.add_recognizer(custom_url_recognizer)
-print("✅ Registered custom URL recognizer")
 
-# --- ADD custom recognizer for Employee ID (e.g., EMP12345) ---
+# --- Custom Employee ID recognizer ---
 emp_id_pattern = Pattern(name="EMP_ID", regex=r"\bEMP\d{3,6}\b", score=0.9)
 emp_id_recognizer = PatternRecognizer(supported_entity="EMP_ID", patterns=[emp_id_pattern])
 analyzer.registry.add_recognizer(emp_id_recognizer)
-print("✅ Registered custom Employee ID recognizer")
 
 # -------------------- Helper: Detect PII --------------------
 def detect_pii_presidio(text):
-    """Detect PII entities using Microsoft Presidio + custom regex."""
+    """Detect PII entities using Presidio and custom recognizers."""
     if not isinstance(text, str) or not text.strip():
         return []
+
     results = analyzer.analyze(text=text, language="en")
+
+    # Cleaned, safe PII types only
     pii_types = list({r.entity_type for r in results})
-    # Filter out common noisy entities
-    pii_types = [p for p in pii_types if p not in ["DATE_TIME", "NRP", "LOCATION", "PERSON","UK_NHS","US_DRIVER_LICENSE", "US_BANK_NUMBER"]]
+
+    # STRICT FILTER — Remove all metadata and non-PII
+    FILTER_OUT = {
+        "URL",          # Important → URL ≠ PII
+        "DATE_TIME",
+        "LOCATION",
+        "PERSON",
+        "NRP",
+        "US_DRIVER_LICENSE",
+        "US_BANK_NUMBER",
+        "PHONE_NUMBER"  # optional
+    }
+
+    pii_types = [p for p in pii_types if p not in FILTER_OUT]
+
     return pii_types
 
 
-# -------------------- Helper: Compute binary score --------------------
-def compute_pii_score(pii_entities):
-    """1 if any PII entity detected, else 0"""
-    return int(bool(pii_entities))
-
-
-# -------------------- Core detection for a single DataFrame --------------------
+# -------------------- Core detection --------------------
 def run_pii_detection(df, text_columns):
     """
-    Apply Presidio PII detection on multiple columns in a DataFrame.
-    Adds `pii_entities` (aggregated) and `pii_detailed` (per-column mapping).
+    Applies strict PII detection and stores:
+    - pii_entities (clean list of PII types)
+    - pii_detailed (list of {origin_col, entities})
     """
-    tqdm.pandas(desc="🔎 Running Presidio PII detection")
+    tqdm.pandas(desc="🔎 Running strict PII detection")
 
     def extract_entities_per_row(row):
         detailed = []
         all_entities = []
+
         for col in text_columns:
             val = row.get(col)
             if isinstance(val, str) and val.strip():
@@ -86,24 +97,23 @@ def run_pii_detection(df, text_columns):
                 if ents:
                     detailed.append({"origin_col": col, "entities": ents})
                     all_entities.extend(ents)
+
         return {
             "pii_detailed": detailed,
             "pii_entities": list({e for e in all_entities}),
         }
 
     extracted = df.progress_apply(extract_entities_per_row, axis=1)
+
     df["pii_entities"] = extracted.apply(lambda x: x["pii_entities"])
     df["pii_detailed"] = extracted.apply(lambda x: x["pii_detailed"])
-    df["pii_score"] = df["pii_entities"].apply(compute_pii_score)
+    df["pii_score"] = df["pii_entities"].apply(lambda ents: 1 if ents else 0)
+
     return df
 
 
-# -------------------- Run detection for both DFs --------------------
+# -------------------- Wrapper --------------------
 def run_for_all(serviceDf, providerDf):
-    print("🔍 Running PII detection on Services...")
     serviceDf = run_pii_detection(serviceDf, ["title", "description"])
-
-    print("🔍 Running PII detection on Providers...")
     providerDf = run_pii_detection(providerDf, ["name", "about"])
-
     return serviceDf, providerDf
