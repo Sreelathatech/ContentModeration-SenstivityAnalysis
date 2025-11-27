@@ -96,7 +96,7 @@ def run_moderation_pipeline(sync_timestamp: datetime):
     # ---------------------------------------
     # 8. UPSERT into DB
     # ---------------------------------------
-    #db_rows_written = upsert_final_report(final_report)
+    db_rows_written = upsert_final_report(final_report)
 
     # ---------------------------------------
     # 9. Return structured summary
