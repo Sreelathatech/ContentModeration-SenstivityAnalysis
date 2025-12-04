@@ -30,18 +30,18 @@ def fetch_records(sync_timestamp: datetime):
     service_query = f"""
         SELECT service_id, provider_id, title, description, other_image_urls,
                tags, image_url, updated_on, created_on
-        FROM dev_she_careers.services
+        FROM prod_she_careers.services
         WHERE updated_on > '{ts_str}' 
-           OR created_on > '{ts_str}' limit 500;
+           OR created_on > '{ts_str}' ;
     """
 
     provider_query = f"""
         SELECT provider_id, name, bio_image, profile_picture_url, about,
                provider_store_images, about_image,
                created_on, updated_on
-        FROM dev_she_careers.provider
+        FROM prod_she_careers.provider
         WHERE updated_on > '{ts_str}'
-           OR created_on > '{ts_str}' limit 500;
+           OR created_on > '{ts_str}' ;
     """
 
     # Execute queries
