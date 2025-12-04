@@ -34,7 +34,7 @@ def get_vault_client():
 
 def get_db_config(client):
     """Fetch DB credentials for dev_she_careers from Vault."""
-    vault_kv_path = os.getenv("VAULT_KV_PATH", "database/dev/dev_she_careers")
+    vault_kv_path = os.getenv("VAULT_KV_PATH", "database/prod/prod_she_careers")
     mount_point = os.getenv("KV_MOUNT_POINT", "secret")
 
     secret = client.secrets.kv.v2.read_secret_version(
