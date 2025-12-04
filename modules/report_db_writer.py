@@ -19,20 +19,6 @@ def upsert_final_report(final_report, table_name="content_moderation_report"):
     conn = mysql.connector.connect(**db_config)
     cursor = conn.cursor()
 
-    # --- Ensure table exists ---
-    create_table_sql = f"""
-    CREATE TABLE IF NOT EXISTS {table_name} (
-        entity_id VARCHAR(255) PRIMARY KEY,
-        type VARCHAR(50),
-        content TEXT,
-        reason_of_reporting TEXT,
-        score_summary TEXT,
-        admin_check VARCHAR(100),
-        admin_comment TEXT
-    );
-    """
-    cursor.execute(create_table_sql)
-
     # --- Prepare UPSERT SQL ---
     insert_sql = f"""
     INSERT INTO {table_name}
