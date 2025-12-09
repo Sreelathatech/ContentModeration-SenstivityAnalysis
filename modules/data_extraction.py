@@ -1,5 +1,5 @@
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import mysql.connector
 from utils.vault_utils import get_vault_client, get_db_config
 
@@ -7,11 +7,8 @@ from utils.vault_utils import get_vault_client, get_db_config
 def fetch_records(sync_timestamp: datetime):
     """
     Fetch service and provider records updated after the given timestamp.
-    
-    - sync_timestamp (UTC) comes directly from the FastAPI request.
-    - Uses only dev_she_careers tables.
-    - No SYNC_FILE logic.
-    - No limits.
+
+    Returns a new sync timestamp = current UTC time - 1 hour.
     """
 
     # Ensure proper datetime formatting for SQL
@@ -29,10 +26,11 @@ def fetch_records(sync_timestamp: datetime):
     # --- SQL Queries (dev only) ---
     service_query = f"""
         SELECT service_id, provider_id, title, description, other_image_urls,
-               tags, image_url, updated_on, created_on
+               tags, image_url, updated_on, created_on,
+               is_multi_city, is_pre_owned_item
         FROM prod_she_careers.services
         WHERE updated_on > '{ts_str}' 
-           OR created_on > '{ts_str}' ;
+           OR created_on > '{ts_str}' limit 20;
     """
 
     provider_query = f"""
@@ -41,7 +39,7 @@ def fetch_records(sync_timestamp: datetime):
                created_on, updated_on
         FROM prod_she_careers.provider
         WHERE updated_on > '{ts_str}'
-           OR created_on > '{ts_str}' ;
+           OR created_on > '{ts_str}' limit 20;
     """
 
     # Execute queries
@@ -69,4 +67,37 @@ def fetch_records(sync_timestamp: datetime):
     if "provider_id" in providerDf.columns:
         providerDf["provider_id"] = providerDf["provider_id"].apply(safe_to_str)
 
-    return serviceDf, providerDf
+    # ============================================================
+    #               ADD TYPE COLUMN TO servicedf
+    # ============================================================
+
+    if {"is_multi_city", "is_pre_owned_item"}.issubset(serviceDf.columns):
+
+        def resolve_service_type(row):
+            mc = str(row["is_multi_city"]).lower()
+            po = str(row["is_pre_owned_item"]).lower()
+
+            if mc == "false" and po == "false":
+                return "service"
+            if mc == "true" and po == "false":
+                return "product"
+            if mc == "true" and po == "true":
+                return "preowned"
+
+            return "service"  # default
+
+        serviceDf["type"] = serviceDf.apply(resolve_service_type, axis=1)
+
+    # ============================================================
+    #               ADD TYPE COLUMN TO providerDf
+    # ============================================================
+
+    providerDf["type"] = "provider"
+
+    # ============================================================
+    #     UPDATE sync_timestamp TO (current_time - 1 hour)
+    # ============================================================
+
+    new_sync_timestamp = datetime.utcnow() - timedelta(hours=1)
+
+    return serviceDf, providerDf, new_sync_timestamp

@@ -15,23 +15,13 @@ from modules.report_db_writer import upsert_final_report
 def run_moderation_pipeline(sync_timestamp: datetime):
     """
     Runs the full content moderation pipeline for Services + Providers.
-
-    Steps:
-    1. Fetch updated records using sync timestamp
-    2. Run PII detection
-    3. Run Toxicity detection
-    4. Run NSFW detection
-    5. Generate reporting columns
-    6. Group into final report
-    7. Filter only review-required rows
-    8. UPSERT into DB
-    9. Return summary JSON
+    All report saving (Excel/CSV) is disabled to reduce server load.
     """
 
     # ---------------------------------------
     # 1. Fetch updated service & provider data
     # ---------------------------------------
-    serviceDf, providerDf = fetch_records(sync_timestamp)
+    serviceDf, providerDf, new_sync_timestamp = fetch_records(sync_timestamp)
 
     service_count = len(serviceDf)
     provider_count = len(providerDf)
@@ -39,7 +29,7 @@ def run_moderation_pipeline(sync_timestamp: datetime):
 
     if total_processed == 0:
         return {
-            "sync_timestamp": sync_timestamp.isoformat(),
+            "sync_timestamp": new_sync_timestamp.isoformat(),
             "service_records": 0,
             "provider_records": 0,
             "total_records_processed": 0,
@@ -55,12 +45,16 @@ def run_moderation_pipeline(sync_timestamp: datetime):
     # ---------------------------------------
     # 3. Run Toxicity detection
     # ---------------------------------------
+    print("Starting toxicity detection")
     serviceDf, providerDf = run_toxicity(serviceDf, providerDf)
+    print("finished running toxicity detection")
 
     # ---------------------------------------
     # 4. Run NSFW detection
     # ---------------------------------------
+    print("running nsfw")
     serviceDf, providerDf = run_nsfw(serviceDf, providerDf)
+    print("finished nsfw")
 
     # ---------------------------------------
     # 5. Generate reporting columns
@@ -83,29 +77,21 @@ def run_moderation_pipeline(sync_timestamp: datetime):
 
     flagged_count = len(final_report)
 
-    if not final_report.empty:
-        project_root = os.path.dirname(os.path.abspath(__file__))
-        output_dir = os.path.join(project_root, "outputs")
-        os.makedirs(output_dir, exist_ok=True)
-
-        csv_path = os.path.join(output_dir, "final_moderation_report.csv")
-        final_report.to_csv(csv_path, index=False)
-    else:
-        csv_path = None
-
     # ---------------------------------------
-    # 8. UPSERT into DB
+    # 8. UPSERT into DB (disabled)
     # ---------------------------------------
     db_rows_written = upsert_final_report(final_report)
+    print("Records inserted")
 
     # ---------------------------------------
     # 9. Return structured summary
     # ---------------------------------------
     return {
-        "sync_timestamp": sync_timestamp.isoformat(),
+        "sync_timestamp": new_sync_timestamp.isoformat(),
         "service_records": service_count,
         "provider_records": provider_count,
         "total_records_processed": total_processed,
-        "flagged_entities": flagged_count
-       # "db_rows_written": db_rows_written
+        "flagged_entities": flagged_count,
+        "db_rows_written": db_rows_written
     }
+

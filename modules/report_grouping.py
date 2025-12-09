@@ -5,20 +5,16 @@ Combine service and provider moderation results into a unified final report.
 
 - Merges toxicity, PII, and NSFW detections
 - Keeps only flagged NSFW URLs
-- Groups all results per unique entity (service/provider)
+- Groups all results per unique entity (service/product/preowned/provider)
 - Deduplicates repeated moderation content entries
 """
 
 import ast
 import pandas as pd
 
-
 # ===================== NSFW FLAGGING =====================
 def _build_nsfw_flags(row):
-    """
-    Build NSFW flags only for URLs actually marked as NSFW.
-    Score threshold = 0.7
-    """
+    """Build NSFW flags only for URLs actually marked as NSFW."""
     nsfw_flags = []
     nsfw_threshold = 0.7
 
@@ -26,7 +22,7 @@ def _build_nsfw_flags(row):
     nsfw_label = str(row.get("nsfw_label", "")).upper()
     url = row.get("image_url", None)
 
-    # Direct per-image detection
+    # Direct detection
     if url and nsfw_label == "NSFW" and nsfw_score and float(nsfw_score) >= nsfw_threshold:
         nsfw_flags.append({
             "flag": "nsfw",
@@ -34,7 +30,7 @@ def _build_nsfw_flags(row):
             "value": url
         })
 
-    # Multi-image fallback from nsfw_candidates
+    # Fallback from list
     elif "nsfw_candidates" in row:
         candidates = row.get("nsfw_candidates")
         if isinstance(candidates, str):
@@ -60,7 +56,7 @@ def _build_flags_for_row(row):
     """Construct toxicity, PII, and NSFW flags for a single row."""
     content = []
 
-    # ---- Toxicity ----
+    # Toxicity
     tox_score = float(row.get("toxicity_score", 0.0))
     if tox_score > 0.6:
         tox_matches = row.get("toxicity_matches", [])
@@ -78,7 +74,7 @@ def _build_flags_for_row(row):
                 "toxicity_score": match.get("score")
             })
 
-    # ---- PII ----
+    # PII
     pii_score = int(row.get("pii_score", 0))
     if pii_score > 0:
         pii_matches = row.get("pii_matches", [])
@@ -95,7 +91,7 @@ def _build_flags_for_row(row):
                 "value": match.get("value")
             })
 
-    # ---- NSFW ----
+    # NSFW
     nsfw_flags = _build_nsfw_flags(row)
     if nsfw_flags:
         content.extend(nsfw_flags)
@@ -105,15 +101,12 @@ def _build_flags_for_row(row):
 
 # ===================== REPORT UTILITIES =====================
 def _reason_of_reporting(content_list):
-    """Generate concise reason summary (toxicity, pii, nsfw)."""
     if not content_list:
         return ""
-    reasons = sorted({c["flag"] for c in content_list if "flag" in c})
-    return ", ".join(reasons)
+    return ", ".join(sorted({c["flag"] for c in content_list if "flag" in c}))
 
 
 def _admin_check(reasons):
-    """Return admin recommendation based on reasons."""
     if not reasons:
         return "No action needed"
     if any(flag in reasons for flag in ["toxicity", "pii", "nsfw"]):
@@ -123,10 +116,7 @@ def _admin_check(reasons):
 
 # ===================== DEDUPLICATION =====================
 def _deduplicate_content(content_list):
-    """
-    Remove duplicate moderation content entries.
-    Duplicates have identical (flag, origin, value) triplets.
-    """
+    """Remove duplicate moderation content entries."""
     if not isinstance(content_list, list):
         return content_list
 
@@ -143,17 +133,27 @@ def _deduplicate_content(content_list):
 
 
 # ===================== ENTITY GROUPING =====================
-def _group_entity_level(df, entity_col, entity_type):
-    """Aggregate all moderation signals per entity."""
+def _group_entity_level(df, entity_col):
+    """
+    Aggregate moderation signals per entity.
+
+    NOTE:
+    - Uses df['type'] directly from data_extraction.py
+      (service/product/preowned/provider)
+    """
     if df is None or df.empty:
         return pd.DataFrame()
+
+    if "type" not in df.columns:
+        raise ValueError("Missing 'type' column — ensure data_extraction.py adds it.")
 
     temp_records = []
     for _, row in df.iterrows():
         content = _build_flags_for_row(row)
+
         temp_records.append({
             "entity_id": row.get(entity_col),
-            "type": entity_type,
+            "type": row.get("type"),  # ← Use precomputed type
             "content": content,
             "toxicity_score": float(row.get("toxicity_score", 0.0)),
             "pii_score": int(row.get("pii_score", 0)),
@@ -162,7 +162,7 @@ def _group_entity_level(df, entity_col, entity_type):
 
     temp_df = pd.DataFrame(temp_records)
 
-    # Aggregate per entity_id
+    # Aggregate per entity_id + type
     grouped = temp_df.groupby(["entity_id", "type"]).agg({
         "content": lambda x: sum(x, []),
         "toxicity_score": "max",
@@ -191,15 +191,15 @@ def _group_entity_level(df, entity_col, entity_type):
             "content",
             "reason_of_reporting",
             "score_summary",
-            "admin_check",
+            "admin_check"
         ]
     ]
 
 
 # ===================== FINAL REPORT =====================
 def generate_final_report(serviceDf, providerDf):
-    """Combine service and provider grouped reports."""
-    service_report = _group_entity_level(serviceDf, "service_id", "service")
-    provider_report = _group_entity_level(providerDf, "provider_id", "provider")
+    """Combine service/product/preowned/provider grouped reports."""
+    service_report = _group_entity_level(serviceDf, "service_id")
+    provider_report = _group_entity_level(providerDf, "provider_id")
 
     return pd.concat([service_report, provider_report], ignore_index=True)
