@@ -30,7 +30,7 @@ def fetch_records(sync_timestamp: datetime):
                is_multi_city, is_pre_owned_item
         FROM prod_she_careers.services
         WHERE updated_on > '{ts_str}' 
-           OR created_on > '{ts_str}' limit 20;
+           OR created_on > '{ts_str}';
     """
 
     provider_query = f"""
@@ -39,7 +39,7 @@ def fetch_records(sync_timestamp: datetime):
                created_on, updated_on
         FROM prod_she_careers.provider
         WHERE updated_on > '{ts_str}'
-           OR created_on > '{ts_str}' limit 20;
+           OR created_on > '{ts_str}' ;
     """
 
     # Execute queries
