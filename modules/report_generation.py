@@ -1,4 +1,4 @@
-# ====================== FIXED REPORT GENERATION ======================
+# ====================== FIXED & STABLE REPORT GENERATION ======================
 import re
 import ast
 import pandas as pd
@@ -19,6 +19,7 @@ _PII_REGEXES = {
     "emp_id": _EMP_ID_RE,
 }
 
+
 def _safe_float(v):
     try:
         if pd.isna(v):
@@ -28,6 +29,9 @@ def _safe_float(v):
         return 0.0
 
 
+# ============================================================================
+# MAIN ENTRY: generate_reporting_columns
+# ============================================================================
 def generate_reporting_columns(df: pd.DataFrame, text_columns=None, image_columns=None):
 
     df = df.copy()
@@ -38,7 +42,9 @@ def generate_reporting_columns(df: pd.DataFrame, text_columns=None, image_column
         candidates = ["title", "description", "tags", "name", "about"]
         text_columns = [c for c in candidates if c in df.columns]
 
-    # ----------------------------- TOXICITY -----------------------------
+    # ----------------------------------------------------------------------
+    # TOXICITY
+    # ----------------------------------------------------------------------
     tox_cols = [c for c in df.columns if "toxicity" in c.lower()]
     if tox_cols:
         df[tox_cols] = df[tox_cols].applymap(_safe_float)
@@ -46,7 +52,7 @@ def generate_reporting_columns(df: pd.DataFrame, text_columns=None, image_column
     else:
         df["toxicity_score"] = 0.0
 
-    # toxicity matches
+    # mapping → original column → toxicity score column
     mapping = {}
     for tcol in text_columns:
         candidates = [c for c in tox_cols if c.startswith(tcol + "_")]
@@ -58,19 +64,25 @@ def generate_reporting_columns(df: pd.DataFrame, text_columns=None, image_column
             if toxcol:
                 score = _safe_float(row.get(toxcol))
                 if score > TOXICITY_THRESHOLD:
-                    matches.append({"origin_col": tcol, "value": row.get(tcol), "score": score})
+                    matches.append({
+                        "origin_col": tcol,
+                        "value": row.get(tcol),
+                        "score": score
+                    })
         return matches
 
     df["toxicity_matches"] = df.progress_apply(_tox_matches, axis=1)
 
-    # ----------------------------- PII -----------------------------
-    # No fallback to pii_entities anymore (FIXED)
+    # ----------------------------------------------------------------------
+    # PII (Regex + Presidio Merged)
+    # ----------------------------------------------------------------------
     def _pii_regex_matches(row):
         matches = []
         for col in text_columns:
             text = row.get(col, "")
             if not isinstance(text, str):
                 continue
+
             for name, regex in _PII_REGEXES.items():
                 found = regex.findall(text)
                 for v in found:
@@ -79,31 +91,48 @@ def generate_reporting_columns(df: pd.DataFrame, text_columns=None, image_column
 
     df["pii_regex_matches"] = df.progress_apply(_pii_regex_matches, axis=1)
 
-    # merge regex + presidio detailed
+    # MERGE FUNCTION THAT RETURNS ONLY LISTS
     def _merge_pii(row):
         merged = []
-        # add regex matches
-        merged.extend(row.get("pii_regex_matches", []))
 
-        # add presidio matches
+        # regex PII
+        rx = row.get("pii_regex_matches", [])
+        if isinstance(rx, list):
+            merged.extend(rx)
+
+        # presidio detailed (optional)
         detailed = row.get("pii_detailed", [])
         if isinstance(detailed, str):
             try:
                 detailed = ast.literal_eval(detailed)
             except:
                 detailed = []
-        for block in detailed:
-            origin = block.get("origin_col")
-            for ent in block.get("entities", []):
-                merged.append({"origin_col": origin, "value": ent})
+
+        if isinstance(detailed, list):
+            for block in detailed:
+                origin = block.get("origin_col")
+                ents = block.get("entities", [])
+                if not isinstance(ents, list):
+                    ents = [ents]
+
+                for ent in ents:
+                    merged.append({"origin_col": origin, "value": ent})
+
+        # ALWAYS return a Python list
+        if not isinstance(merged, list):
+            return []
         return merged
 
-    df["pii_matches"] = df.progress_apply(_merge_pii, axis=1)
+    # --- CRITICAL FIX: Convert the entire column to a plain Python list BEFORE assignment ---
+    pii_list = df.progress_apply(_merge_pii, axis=1).tolist()
+    pii_list = [x if isinstance(x, list) else [] for x in pii_list]
 
-    # Recompute pii_score based on real matches
+    df["pii_matches"] = pii_list
     df["pii_score"] = df["pii_matches"].apply(lambda x: 1 if x else 0)
 
-    # ----------------------------- NSFW -----------------------------
+    # ----------------------------------------------------------------------
+    # NSFW
+    # ----------------------------------------------------------------------
     nsfw_cols = [c for c in df.columns if "nsfw" in c.lower()]
     if nsfw_cols:
         df[nsfw_cols] = df[nsfw_cols].applymap(_safe_float)
@@ -112,3 +141,4 @@ def generate_reporting_columns(df: pd.DataFrame, text_columns=None, image_column
         df["nsfw_score"] = 0.0
 
     return df
+
