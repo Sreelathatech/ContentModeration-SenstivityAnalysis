@@ -87,7 +87,7 @@ def run_moderation_pipeline(sync_timestamp: datetime):
     # ------------------------- (OPTIONAL) DB UPSERT -------------------------
     db_rows = 0
     try:
-        db_rows = upsert_final_report(final_report)
+        db_rows = upsert_final_report(review_df)
         print(f"DB Inserted Rows: {db_rows}")
     except Exception as e:
         print("DB upsert failed:", e)
