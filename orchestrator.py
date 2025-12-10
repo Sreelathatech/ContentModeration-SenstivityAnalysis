@@ -1,97 +1,106 @@
 # ==========================================================
-# orchestrator.py — Central Moderation Pipeline
+# orchestrator.py — Paginated Moderation Pipeline (Write ONLY review_final)
 # ==========================================================
 import os
+import pandas as pd
 from datetime import datetime
-from modules.data_extraction import fetch_records
+from modules.data_extraction import fetch_records_page
 from modules.pii_detection import run_for_all as run_pii
 from modules.toxicity_detection import run_for_all as run_toxicity
 from modules.nsfw_detection import run_for_all as run_nsfw
 from modules.report_generation import generate_reporting_columns
 from modules.report_grouping import generate_final_report
-from modules.report_db_writer import upsert_final_report
+from modules.report_db_writer import upsert_final_report  # disabled for now
+
+BATCH_SIZE = 50  # configurable
 
 
 def run_moderation_pipeline(sync_timestamp: datetime):
-    """
-    Runs the full content moderation pipeline for Services + Providers.
-    All report saving (Excel/CSV) is disabled to reduce server load.
-    """
 
-    # ---------------------------------------
-    # 1. Fetch updated service & provider data
-    # ---------------------------------------
-    serviceDf, providerDf, new_sync_timestamp = fetch_records(sync_timestamp)
+    # Prepare output folder
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    output_dir = os.path.join(project_root, "outputs")
+    os.makedirs(output_dir, exist_ok=True)
 
-    service_count = len(serviceDf)
-    provider_count = len(providerDf)
-    total_processed = service_count + provider_count
+    service_frames = []
+    provider_frames = []
 
-    if total_processed == 0:
-        return {
-            "sync_timestamp": new_sync_timestamp.isoformat(),
-            "service_records": 0,
-            "provider_records": 0,
-            "total_records_processed": 0,
-            "flagged_entities": 0,
-            "db_rows_written": 0
-        }
+    total_service = 0
+    total_provider = 0
+    page = 0
 
-    # ---------------------------------------
-    # 2. Run PII detection
-    # ---------------------------------------
-    serviceDf, providerDf = run_pii(serviceDf, providerDf)
+    while True:
 
-    # ---------------------------------------
-    # 3. Run Toxicity detection
-    # ---------------------------------------
-    print("Starting toxicity detection")
-    serviceDf, providerDf = run_toxicity(serviceDf, providerDf)
-    print("finished running toxicity detection")
+        serviceDf, providerDf, new_sync_timestamp = fetch_records_page(
+            sync_timestamp, page, BATCH_SIZE
+        )
 
-    # ---------------------------------------
-    # 4. Run NSFW detection
-    # ---------------------------------------
-    print("running nsfw")
-    serviceDf, providerDf = run_nsfw(serviceDf, providerDf)
-    print("finished nsfw")
+        if serviceDf.empty and providerDf.empty:
+            break
 
-    # ---------------------------------------
-    # 5. Generate reporting columns
-    # ---------------------------------------
-    service_final = generate_reporting_columns(serviceDf)
-    provider_final = generate_reporting_columns(providerDf)
+        print(f"Processing page {page}: "
+              f"{len(serviceDf)} services, {len(providerDf)} providers")
 
-    # ---------------------------------------
-    # 6. Group into final report
-    # ---------------------------------------
-    final_report = generate_final_report(service_final, provider_final)
+        total_service += len(serviceDf)
+        total_provider += len(providerDf)
 
-    # ---------------------------------------
-    # 7. Filter only entities requiring review
-    # ---------------------------------------
-    final_report["admin_comment"] = ""
-    final_report = final_report.loc[
-        final_report["admin_check"] == "Review required"
-    ]
+        # 1. PII
+        serviceDf, providerDf = run_pii(serviceDf, providerDf)
 
-    flagged_count = len(final_report)
+        # 2. Toxicity
+        print("Started toxicity detection")
+        serviceDf, providerDf = run_toxicity(serviceDf, providerDf)
 
-    # ---------------------------------------
-    # 8. UPSERT into DB (disabled)
-    # ---------------------------------------
-    db_rows_written = upsert_final_report(final_report)
-    print("Records inserted")
+        # 3. NSFW
+        print("Started nfsw detection")
+        serviceDf, providerDf = run_nsfw(serviceDf, providerDf)
+        print("Finished nfsw detection")
 
-    # ---------------------------------------
-    # 9. Return structured summary
-    # ---------------------------------------
+        # 4. Reporting Columns
+        service_final = generate_reporting_columns(serviceDf)
+        provider_final = generate_reporting_columns(providerDf)
+
+        # Store all batches in memory
+        if not service_final.empty:
+            service_frames.append(service_final)
+        if not provider_final.empty:
+            provider_frames.append(provider_final)
+
+        page += 1
+
+    # ------------------------- MERGE RESULTS -------------------------
+    service_full = pd.concat(service_frames, ignore_index=True) if service_frames else pd.DataFrame()
+    provider_full = pd.concat(provider_frames, ignore_index=True) if provider_frames else pd.DataFrame()
+
+    # ------------------------- FINAL REPORT -------------------------
+    final_report = generate_final_report(service_full, provider_full)
+
+    # ------------------------- FILTER REVIEW REQUIRED -------------------------
+    review_df = final_report.loc[final_report["admin_check"] == "Review required"].copy()
+    review_df["admin_comment"] = ""
+
+    # ------------------------- SAVE REVIEW REPORT ONLY -------------------------
+    review_path = os.path.join(output_dir, "review_final.csv")
+    review_df.to_csv(review_path, index=False)
+    print(f"Saved final review-only report: {review_path}")
+
+    # ------------------------- (OPTIONAL) DB UPSERT -------------------------
+    db_rows = 0
+    try:
+        db_rows = upsert_final_report(final_report)
+        print(f"DB Inserted Rows: {db_rows}")
+    except Exception as e:
+        print("DB upsert failed:", e)
+        db_rows = 0
+    
+
+    # ------------------------- RETURN SUMMARY -------------------------
     return {
         "sync_timestamp": new_sync_timestamp.isoformat(),
-        "service_records": service_count,
-        "provider_records": provider_count,
-        "total_records_processed": total_processed,
-        "flagged_entities": flagged_count,
-        "db_rows_written": db_rows_written
+        "service_records": total_service,
+        "provider_records": total_provider,
+        "total_records_processed": total_service + total_provider,
+        "batches": page,
+        "flagged_entities": len(review_df),
+        "db_rows_written": db_rows,
     }
-
