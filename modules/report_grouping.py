@@ -142,7 +142,14 @@ def _group_entity_level(df, entity_col):
       (service/product/preowned/provider)
     """
     if df is None or df.empty:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=[
+            "entity_id",
+            "type",
+            "content",
+            "reason_of_reporting",
+            "score_summary",
+            "admin_check",
+            ])
 
     if "type" not in df.columns:
         raise ValueError("Missing 'type' column — ensure data_extraction.py adds it.")
