@@ -24,11 +24,13 @@ def fetch_records_page(sync_timestamp: datetime, page: int, batch_size: int):
     # -------------------------
     # SERVICES PAGE
     # -------------------------
+    
     service_query = f"""
         SELECT *
         FROM prod_she_careers.services
-        WHERE updated_on >= '{ts_str}' - INTERVAL 6 HOUR
-           OR created_on >= '{ts_str}' - INTERVAL 6 HOUR
+        WHERE (updated_on >= '{ts_str}' - INTERVAL 6 HOUR
+           OR created_on >= '{ts_str}' - INTERVAL 6 HOUR)
+           and status in ('ACTIVE','DRAFT')
         ORDER BY updated_on ASC
         LIMIT {batch_size} OFFSET {offset};
     """
@@ -39,8 +41,9 @@ def fetch_records_page(sync_timestamp: datetime, page: int, batch_size: int):
     provider_query = f"""
         SELECT *
         FROM prod_she_careers.provider
-        WHERE updated_on >= '{ts_str}' - INTERVAL 6 HOUR
-           OR created_on >= '{ts_str}' - INTERVAL 6 HOUR
+        WHERE (updated_on >= '{ts_str}' - INTERVAL 6 HOUR
+           OR created_on >= '{ts_str}' - INTERVAL 6 HOUR)
+        AND   status in ('ACTIVE','DRAFT')
         ORDER BY updated_on ASC
         LIMIT {batch_size} OFFSET {offset};
     """
